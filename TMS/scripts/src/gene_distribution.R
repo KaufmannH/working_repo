@@ -292,6 +292,7 @@ quadratic_entropy <- function(df, data_source, write = FALSE) {
 # filter out the ones that are in fewer than 5 clusters? 
 
 
+#fix
 quadratic_entropy_unbiased <- function(df, data_source, write = FALSE) {
   # raos q entropy measures diversity while taking the similarities of the categories into account
 
