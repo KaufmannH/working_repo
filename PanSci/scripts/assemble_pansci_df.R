@@ -48,7 +48,7 @@ results_tibble[1:10, 4:11]
 
 
 # stopped here: 
-#get a df witht he age, sex and cluster and cell type, do it in prepr objects for regnosie pipeline
+# get a df witht he age, sex and cluster and cell type, do it in prepr objects for regnosie pipeline
 # the cluster in the resvar table is the seurat cluster
 # i think i need to generate an id for the main cell types myself and then relate
 
