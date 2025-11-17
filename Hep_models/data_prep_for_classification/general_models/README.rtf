@@ -1,0 +1,17 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2639
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh7840\viewkind0
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 The files in this folder correspond to the preparation of the prediction data (only promoter elements from EPD) and the observations (gene list) for the general models.\
+\
+Here, I used different cutoffs for the classification of HVGs and LVGs based on the fractions that a gene was labeled as one or the other across the clusters of the whole TMS.\
+\
+File structure:\
+- epd_mm: contains all the EPD data\
+- exploratory_figures.R: a script that is called by prep_gene_list.R to generate general exploratory plots of the data\
+- predictors: contains the promoter element data\
+- prep_epd_predictors.R: the script to prepare the format of EPD elements\
+- prep_gene_list.R: The script used to prepare the observations and predictors for the modeling, including the subsampling and mean-matching of HVGs and LVGs}
