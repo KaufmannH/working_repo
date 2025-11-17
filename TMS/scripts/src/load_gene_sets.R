@@ -17,7 +17,9 @@ load_filter_og_df <- function(data_source) {
     df_main_filtered <- df_main_all |>
       filter(age == 3) |>
       mutate(cell_type = str_to_title(cell_type)) |>
-      filter(cell_type == "Macrophage")  # or %in% immune_cell_type_list
+      filter(cell_type == "Macrophage")# |> # or %in% immune_cell_type_list
+      #mutate (lvg = res_var < 0.5) |>
+     # mutate (hvg = res_var > 3) 
 
     # save
     write.csv(df_main_filtered, file = "facs/data/df_main_filtered.csv", row.names = FALSE)
@@ -32,7 +34,10 @@ load_filter_og_df <- function(data_source) {
     df_main_filtered <- df_main_all |>
       filter(age == 3) |>
       mutate(cell_type = str_to_title(cell_type)) |>
-      filter(cell_type == "Macrophage")  # or %in% immune_cell_type_list
+      filter(cell_type == "Macrophage") #|> # or %in% immune_cell_type_list
+     # mutate (lvg = res_var < 0.5) |>
+      #mutate (hvg = res_var > 3) 
+      
     # save
     write.csv(df_main_filtered, file = "droplet/data/df_main_filtered.csv", row.names = FALSE)
 

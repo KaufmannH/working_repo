@@ -2,8 +2,7 @@
 
 gene_distribution <- function(df, data_source) {
   # for a selection of genes show their distribution across categories
-  df <- strat_df
-  data_source <- "droplet"
+
   gene_set_order <- names(df)[grepl(" gene$", names(df))]
 
   all_cats <- c(
@@ -163,82 +162,90 @@ dummy_entropy <- function(data_source) {
 
 
 
+subsample_genes_balanced <- function(df) {
+  hvg_df <- strat_df |>
+    select(gene, gmean, cluster_id, tissue, res_var, gene_variability, expression_bin, category ) |>
+    filter(gene_variability != "Not expressed") |>
+    filter(gene_variability == "HVG") |>
+    group_by(cluster_id, expression_bin) |>
+    summarise(nr_hvgs = n(), .groups = "drop")
+  head(hvg_df)
+  hvg_df$nr_hvgs
+
+
+  annotated_df <- strat_df %>%
+  select(gene, gmean, cluster_id, tissue, res_var, gene_variability, expression_bin, category ) |>
+  filter(gene_variability != "Not expressed") |>
+  left_join(hvg_df, by = c("cluster_id", "expression_bin")) |>
+    mutate(nr_hvgs = coalesce(nr_hvgs, 0L)) |>
+  select(gene, cluster_id, gene_variability, category, nr_hvgs, gene) |>
+  arrange(cluster_id, nr_hvgs)
+  tail(annotated_df)
+
+ all_categories  <- c(
+  "LVG 1", "LVG 2", "LVG 3", "LVG 4", "LVG 5", "LVG 6",
+  "HVG 1", "HVG 2", "HVG 3", "HVG 4", "HVG 5", "HVG 6", 
+  "Intermediate 1",  "Intermediate 2", "Intermediate 3", "Intermediate 4", "Intermediate 5", "Intermediate 6")
+
+  out <- list()
+  set.seed(789)
+  for (cat in all_categories) {
+    dcat <- annotated_df %>% filter(category == cat)
+    samp <- dcat |>
+      group_by(cluster_id, category)  %>%               
+      sample_n(size = min(first(nr_hvgs), n())) %>%  
+      ungroup()
+  out[[cat]] <- samp 
+  }
+  sampled_all <- bind_rows(out)
+
+  check <- sampled_all |>
+    group_by(gene_variability, category) |>
+    summarise(count = n())
+  check
+
+sampled_all
+}
+
+
 
 all_genes_entropy_prep <- function(category_df, data_source) {
   # prepare the staratified data for the entropy calculation
-category_df <- strat_df
-data_source <- "droplet"
-   all_cats <- c(
-   "LVG 1", "LVG 2", "LVG 3", "LVG 4", "LVG 5", "LVG 6",
+
+# for doc vs 2
+  all_categories  <- c(
+  "LVG 1", "LVG 2", "LVG 3", "LVG 4", "LVG 5", "LVG 6",
   "HVG 1", "HVG 2", "HVG 3", "HVG 4", "HVG 5", "HVG 6", 
-   "Intermediate 1",  "Intermediate 2", "Intermediate 3", "Intermediate 4", "Intermediate 5", "Intermediate 6", 
-  "Not expressed 0")
+  "Intermediate 1",  "Intermediate 2", "Intermediate 3", "Intermediate 4", "Intermediate 5", "Intermediate 6")
 
-  selected_df <- category_df |>
-    select(gmean, gene, cluster_id, cell_type, category, res_var, perc_hvg, gene_variability, cluster_name) # gene sets not needed
-  saveRDS(selected_df, paste0(data_source, '/data/df_selected.rds'))
+  n_clusters_df <- sampled_all |>
+    filter(category != "Not expressed 0") |> # only the ones from the gene sets are removed not the ones that are were in cluster
+    group_by(gene) |>
+    summarise(n_clusters = n_distinct(cluster_id), .groups = "drop") |>
+    filter(n_clusters > 5) 
+  print(n_clusters_df, n = 300)
 
-  counts_df <- selected_df |>
-    filter(category != 'Not expressed 0') |>
-    mutate(
-      category    = factor(category, levels = all_cats),
-      cluster_plot = paste(cell_type, "\n", cluster_name)) |>
-    distinct(gene, cluster_plot, .keep_all = TRUE) |>
-    group_by(gene, category, cluster_id) |>
-    count(name = "n_times") |>
-    ungroup() |>
-    complete(gene, category, fill = list(n_times = 0))
+  gene_category_counts <- strat_df |>
+    filter(category != "Not expressed 0") |>
+    semi_join(n_clusters_df, by = "gene") |>          
+    count(gene, category, name = "n_category") |>      
+    complete(gene, category = all_categories,           
+            fill = list(n_category = 0)) |>
+    left_join(n_clusters_df, by = "gene") |>        
+    mutate(n_times = if_else(n_clusters > 0, n_category / n_clusters, 0)) |>
+    arrange(gene, category)
 
-  return(counts_df)
+  print(gene_category_counts, n = 300)
+
+  return(gene_category_counts)
 }
-
-# for doc
-category_df <- strat_df
-   all_cats <- c(
-   "LVG 1", "LVG 2", "LVG 3", "LVG 4", "LVG 5", "LVG 6",
-  "HVG 1", "HVG 2", "HVG 3", "HVG 4", "HVG 5", "HVG 6", 
-   "Intermediate 1",  "Intermediate 2", "Intermediate 3", "Intermediate 4", "Intermediate 5", "Intermediate 6", 
-  "Not expressed 0")
-
-  selected_df <- category_df |>
-    select(gmean, gene, cluster_id, cell_type, category, res_var, perc_hvg, gene_variability, cluster_name) # gene sets not needed
- # saveRDS(selected_df, paste0(data_source, '/data/df_selected.rds'))
-
-
-# de-dup per gene–cluster first
-base <- selected_df %>%
-  filter(category != "Not expressed 0") %>%
-  mutate(
-    category     = factor(category, levels = all_cats),
-    cluster_plot = paste(cell_type, "\n", cluster_name)
-  ) %>%
-  distinct(gene, cluster_id, .keep_all = TRUE)
-
-# 1) how many clusters per gene
-gene_cluster_counts <- base %>%
-  count(gene, name = "n_clusters")
-
-# 2) keep genes by cluster count
-#    CHANGE the operator depending on what you want:
-#    - keep genes present in >= 5 clusters:
-keep_genes <- gene_cluster_counts %>% filter(n_clusters >= 5) %>% pull(gene)
-#    - (if instead you truly want "below 5"):
-# keep_genes <- gene_cluster_counts %>% filter(n_clusters < 5) %>% pull(gene)
-
-# 3) how many times each kept gene is in each category
-gene_category_counts <- base %>%
-  filter(gene %in% keep_genes) %>%
-  count(gene, category, name = "n_times") %>%
-  complete(gene, category, fill = list(n_times = 0)) %>%
-  arrange(gene, category)
-
-gene_category_counts
 
 
 
 
 subsample_genes <- function(df) {
   # subsample the genes (for fast entropy calculation)
+  all_genes_rao_prep <- gene_category_counts
   all_genes <- unique(all_genes_rao_prep$gene)
   set.seed(4)  
   n   <- length(all_genes)
@@ -246,19 +253,22 @@ subsample_genes <- function(df) {
   subsampled_genes <- sample(all_genes, k, replace = FALSE)
   subsampled_df <- all_genes_rao_prep |>
     filter(gene %in% subsampled_genes)
+print(subsampled_df, n = 200)
 
   return(subsampled_df)
 }
 
 
+
 quadratic_entropy <- function(df, data_source, write = FALSE) {
   # raos q entropy measures diversity while taking the similarities of the categories into account
   df <- gene_category_counts
+  data_source <- "droplet"
   gene_list <- unique(df$gene)
   all_categories <- unique(df$category) 
 
   # distance matrix 
-  D <- readRDS(file = "facs/data/dissimilarity_matrix_rao.rds")
+  #D <- readRDS(file = "facs/data/dissimilarity_matrix_rao.rds")
   rownames(D) <-  all_categories
   colnames(D) <- all_categories
 
@@ -267,14 +277,8 @@ quadratic_entropy <- function(df, data_source, write = FALSE) {
   for (gene in gene_list) {
     df_gene <- df |> filter(gene == !!gene)
 
-    df_cat <- df_gene #|> 
-      #group_by(category) |> 
-     # summarise(n_times = sum(in_cluster_count), .groups = "drop") |> 
-      #mutate(total_count = sum(n_times),
-            #fraction  = n_times / total_count)
-
     p <- setNames(rep(0, length(all_categories)), all_categories)
-    p[df_cat$category] <- df_cat$n_times # or fraction
+    p[df_gene$category] <- df_gene$n_times 
 
     rao_q <- sum(outer(p, p) * D)
 
@@ -287,79 +291,8 @@ quadratic_entropy <- function(df, data_source, write = FALSE) {
   return(gene_similarity_df)
 }
 
-# rao makes genes in few clusters look less dispersed in comparison to more cluster genes
-# solution would be U statistic, but if there are mostly genes with high cluster numbers its fine
-# filter out the ones that are in fewer than 5 clusters? 
 
 
-#fix
-quadratic_entropy_unbiased <- function(df, data_source, write = FALSE) {
-  # raos q entropy measures diversity while taking the similarities of the categories into account
-
-
-  gene_list <- unique(df$gene)
-  all_categories <- unique(df$category) 
-
-  D <- readRDS(file = "facs/data/dissimilarity_matrix_rao.rds")
-  rownames(D) <-  all_categories
-  colnames(D) <- all_categories
-
-  rao_plugin <- function(p, D_sub) {
-  # p: named probs over observed categories (sum=1), names match colnames(D_sub)
-  p <- p[colnames(D_sub)]
-  as.numeric(t(p) %*% D_sub %*% p)}
-
-  genes <- unique(df$gene)
-  out <- vector("list", length(genes))
-
-  for (k in seq_along(genes)) {
-    g <- genes[k]
-    df_g <- df |> filter(gene == !!g)
-
-    n_clusters <- df_g |> distinct(cluster_id) |> nrow()
-
-    # counts per observed category (only categories with n_times > 0)
-    df_cat <- df_g |>
-      group_by(category) |>
-      summarise(n_times = sum(n_times), .groups = "drop") |>
-      filter(n_times > 0)
-
-    cats <- df_cat$category
-    total <- sum(df_cat$n_times)
-
-    # probabilities on observed categories only
-    p <- setNames(df_cat$n_times / total, cats)
-
-    # subset D to observed support only (this enforces "observed-only" rule)
-    # also guard in case D lacks a category name
-    if (!all(cats %in% rownames(D))) {
-      missing_cats <- setdiff(cats, rownames(D))
-      stop("Categories missing in D: ", paste(missing_cats, collapse = ", "))
-    }
-    D_sub <- as.matrix(D[cats, cats, drop = FALSE])
-
-    q <- rao_plugin(p, D_sub)  # with one category, this yields 0 (diag=0)
-
-    out[[k]] <- data.frame(
-      gene          = g,
-      n_clusters    = n_clusters,
-      n_categories  = length(cats),
-      total_count   = total,
-      rao_q         = q,
-      stringsAsFactors = FALSE
-    )
-  }
-
-  gene_similarity_df <- dplyr::bind_rows(out) |>
-    filter(n_clusters >= 5)
-
-
-  if (write) {
-    saveRDS(gene_similarity_df, paste0(data_source, '/data/df_entropy_full.rds'))
-    print("Saved df to data.")
-  }
-  return(gene_similarity_df)
-}
 
 
 
@@ -395,7 +328,6 @@ plot_raos_gene_selection <- function(df, data_source) {
 
 
 
-
 plot_raos_all_genes <- function(df, data_source) {
   # plot entropy for a lot of genes in a histogram
   
@@ -403,10 +335,10 @@ plot_raos_all_genes <- function(df, data_source) {
 
   plot <- ggplot(df, aes(x = rao_q)) +
     geom_histogram(binwidth = 0.05, fill = "#A2C759") + #A2C759 #A9D18E
-    scale_x_continuous(
-      name = "Rao’s quadratic entropy",
-      breaks = seq(0, max(df$rao_q, na.rm = TRUE), by = 0.5),
-      labels = scales::number_format(accuracy = 0.5)) +
+   # scale_x_continuous(
+    #  name = "Rao’s quadratic entropy",
+    #  breaks = seq(0, max(df$rao_q, na.rm = TRUE), by = 0.5),
+     # labels = scales::number_format(accuracy = 0.5)) +
     labs(x = "Rao’s quadratic entropy",
          y = "Count of genes") +
   theme_classic() +
@@ -426,6 +358,7 @@ plot_raos_all_genes <- function(df, data_source) {
     } else {
       stop("Issue when saving.")
     }   
+
     return(df)
 }
 
@@ -436,14 +369,14 @@ merge_entropy_results <-  function(data_source) {
   df_entropy <- readRDS(paste0(data_source, "/data/df_entropy_full.rds")) 
   category_df <- readRDS(paste0(data_source, "/data/strat_df.rds"))
 
-  master_entropy_df <- category_df |>
-    left_join(df_entropy, by = 'gene') 
+  master_entropy_df <- df_entropy |>
+    left_join(category_df, by = 'gene') 
   saveRDS(master_entropy_df, paste0(data_source,"/data/rao_q_metadata.rds"))
 
   selection_for_checking <- master_entropy_df |>
     select(gene, category, gmean, gene_variability, rao_q, cluster_id) |>
     arrange(rao_q)
-  write.csv(selection_for_checking, paste0(data_source, "/data/df_selected.rds"))
+  write.csv(selection_for_checking, paste0(data_source, "/data/df_selected.csv"))
 
   return(master_entropy_df)
 }
@@ -553,7 +486,7 @@ rao_df
    # mutate(`Control gene` = `Meiosis gene` | 
                          #  `Sperm DNA condensation gene` | 
                           # `Oocyte maturation gene`) |>                 
-    select(c(-`Meiosis gene`, - `Sperm DNA condensation gene`, - `Oocyte maturation gene`)) |>
+   # select(c(-`Meiosis gene`, - `Sperm DNA condensation gene`, - `Oocyte maturation gene`)) |>
     pivot_longer(
       cols      = matches(" gene$"),
       names_to  = "gene_set",
@@ -565,7 +498,7 @@ rao_df
       #gene_set    = factor(gene_set, levels = gene_set_order),
       category    = factor(category, levels = all_cats),
       cluster_plot = paste(cluster_name,  "| ", cell_type ),
-      rao_q_low = rao_q > 5.5) |>
+      rao_q_low = rao_q > 30) |>
     #count(gene_set, cluster_plot, category, name = "n_genes") |>
     filter(gene_set != "Not expressed") |>
     group_by(gene_set) |>
@@ -578,11 +511,11 @@ print(counts_df, n = 30)
 
 
   plot <- ggplot(counts_df, aes(fraction_low_rao, gene_set)) +
-    geom_col(width = 0.8, fill = "#EFDC5F") + #F76C7E #85A5F1 #42D4D5 #40CAF0 #EFDC5F
+    geom_col(width = 0.8, fill = "#40CAF0") + #F76C7E #85A5F1 #42D4D5 #40CAF0 #EFDC5F
     guides(fill = guide_legend(nrow = 6)) +
     labs(
       y = "Gene sets",
-      x = "Fraction of genes with entropy > 5") +
+      x = "Fraction of genes with entropy < 3") +
     theme_classic() +
     theme(
       strip.placement       = "outside",
@@ -631,24 +564,24 @@ rest <- function() {
   # 12 400 > 11
 
   D <- matrix(c(
-      0,1,2,3,4,5,10,10,10,10,10,10,10,10,10,10,10,10,10,
-      1,0,1,2,3,4,10,10,10,10,10,10,10,10,10,10,10,10,10,
-      2,1,0,1,2,3,10,10,10,10,10,10,10,10,10,10,10,10,10,
-      3,2,1,0,1,2,10,10,10,10,10,10,10,10,10,10,10,10,10,
-      4,3,2,1,0,1,10,10,10,10,10,10,10,10,10,10,10,10,10,
-      5,4,3,2,1,0,10,10,10,10,10,10,10,10,10,10,10,10,10,
-      10,10,10,10,10,10,0,1,2,3,4,5,10,10,10,10,10,10,10,
-      10,10,10,10,10,10,1,0,1,2,3,4,10,10,10,10,10,10,10,
-      10,10,10,10,10,10,2,1,0,1,2,3,10,10,10,10,10,10,10,
-      10,10,10,10,10,10,3,2,1,0,1,2,10,10,10,10,10,10,10,
-      10,10,10,10,10,10,4,3,2,1,0,1,10,10,10,10,10,10,10,
-      10,10,10,10,10,10,5,4,3,2,1,0,10,10,10,10,10,10,10,
-      10,10,10,10,10,10,10,10,10,10,10,10,0,1,2,3,4,5,10,
-      10,10,10,10,10,10,10,10,10,10,10,10,1,0,1,2,3,4,10,
-      10,10,10,10,10,10,10,10,10,10,10,10,2,1,0,1,2,3,10,
-      10,10,10,10,10,10,10,10,10,10,10,10,3,2,1,0,1,2,10,
-      10,10,10,10,10,10,10,10,10,10,10,10,4,3,2,1,0,1,10,
-      10,10,10,10,10,10,10,10,10,10,10,10,5,4,3,2,1,0,10,
-      10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,0
-    ), nrow = 19, byrow = TRUE)
+      0,1,2,3,4,5,10,10,10,10,10,10,10,10,10,10,10,10,
+      1,0,1,2,3,4,10,10,10,10,10,10,10,10,10,10,10,10,
+      2,1,0,1,2,3,10,10,10,10,10,10,10,10,10,10,10,10,
+      3,2,1,0,1,2,10,10,10,10,10,10,10,10,10,10,10,10,
+      4,3,2,1,0,1,10,10,10,10,10,10,10,10,10,10,10,10,
+      5,4,3,2,1,0,10,10,10,10,10,10,10,10,10,10,10,10,
+      10,10,10,10,10,10,0,1,2,3,4,5,10,10,10,10,10,10,
+      10,10,10,10,10,10,1,0,1,2,3,4,10,10,10,10,10,10,
+      10,10,10,10,10,10,2,1,0,1,2,3,10,10,10,10,10,10,
+      10,10,10,10,10,10,3,2,1,0,1,2,10,10,10,10,10,10,
+      10,10,10,10,10,10,4,3,2,1,0,1,10,10,10,10,10,10,
+      10,10,10,10,10,10,5,4,3,2,1,0,10,10,10,10,10,10,
+      10,10,10,10,10,10,10,10,10,10,10,10,0,1,2,3,4,5,
+      10,10,10,10,10,10,10,10,10,10,10,10,1,0,1,2,3,4,
+      10,10,10,10,10,10,10,10,10,10,10,10,2,1,0,1,2,3,
+      10,10,10,10,10,10,10,10,10,10,10,10,3,2,1,0,1,2,
+      10,10,10,10,10,10,10,10,10,10,10,10,4,3,2,1,0,1,
+      10,10,10,10,10,10,10,10,10,10,10,10,5,4,3,2,1,0
+
+    ), nrow = 18, byrow = TRUE)
 }

@@ -374,6 +374,73 @@ plot_gene_set_numbers <- function(df, data_source) {
 
 
 
+# how many genes of each gene set are in each category? summary for all clusters
+
+plot_all_clusters <- function(df, data_source) {
+  df <- sampled_strat_df
+
+  all_cats <- c(
+   "LVG 1", "LVG 2", "LVG 3", "LVG 4", "LVG 5", "LVG 6",
+  "HVG 1", "HVG 2", "HVG 3", "HVG 4", "HVG 5", "HVG 6", 
+   "Intermediate 1",  "Intermediate 2", "Intermediate 3", "Intermediate 4", "Intermediate 5", "Intermediate 6", 
+  "Not expressed 0")
+
+  df <- df |> 
+    mutate(cluster_plot = paste(cell_type, cluster_name, sep = "\n"))
+  
+  gene_set_order <- names(df)[grepl(" gene$", names(df))]
+
+  counts_df <- df |>
+    pivot_longer(
+      cols      = ends_with(" gene"),
+      names_to  = "gene_set",
+      values_to = "in_set") |>
+    filter(in_set == 1) |>
+    mutate(
+      gene_set = factor(gene_set, levels = gene_set_order),
+      category = factor(category, levels = all_cats)) |>
+    count(gene_set, cluster_plot, category, name = "n_genes") |>
+    complete( gene_set, cluster_plot, category, fill = list(n_genes = 1))
+
+
+  # color scheme
+  col_key <- read_excel("color_scheme_categories.xlsx") |>
+    mutate(col_category = factor(col_category, levels = all_cats))
+  col_vec <- setNames(col_key$hex_code, col_key$col_category)
+
+  plot <- ggplot(counts_df, aes(category, n_genes, fill = category)) +
+    geom_col() +
+    guides(fill = guide_legend(nrow = 6)) +
+    facet_wrap(~ gene_set) +
+    labs(x = "Expression category", y = "Number of genes") +
+    scale_fill_manual(values = col_vec) +
+    theme_classic() +
+    theme(
+      axis.text.x        = element_text(angle = 45, hjust = 1, size = 20),
+      axis.text.y        = element_text(size = 20),
+      axis.title.x        = element_text(size = 20),
+      axis.title.y        = element_text(size = 20),
+      strip.text.y.left  = element_blank(),
+      strip.text.y.right = element_text(angle = 0, size = 20),
+      strip.text = element_text(size = 20),
+      strip.background.y = element_blank(),
+      legend.position    = "top", size = 20,
+      legend.text =     element_text(size = 20))
+      
+
+  if (data_source == "facs") {
+    print("Saved to: FACS.")
+    ggsave("facs/plots/3_m/Test_8/strat_per_gs.png", plot, width = 16, height = 17)
+  } else if (data_source == "droplet") {
+    print("Saved to: droplet")
+    ggsave("droplet/plots/3_m/Test_8/strat_per_gs.png", plot, width = 16, height = 17)
+  } else {
+    stop("Issue when saving.")
+  }    
+}
+
+
+
 # density to compare the dist of the gene sets
 plot_gene_set_proportions <- function(df, data_source) {
 
@@ -408,6 +475,7 @@ plot_gene_set_proportions <- function(df, data_source) {
 
   plot <- ggplot(counts_df, aes(category, density, fill = category)) +
     geom_col() +
+    guides(fill = guide_legend(nrow = 3)) +
     ggh4x::facet_grid2(
       gene_set    ~ cluster_plot,
       scales      = "free_y",   
@@ -425,14 +493,14 @@ plot_gene_set_proportions <- function(df, data_source) {
       strip.text.y.right    = element_blank(),
       strip.background      = element_blank(),
       axis.text.x           = element_text(angle = 45, hjust = 1),
-      legend.position       = "none")
+      legend.position       = "top")
 
     if (data_source == "facs") {
       print("Saved to: FACS.")
-      ggsave("facs/plots/3_m/Test_11/gene_set_proportions.png", plot, width = 45, height = 45)
+      ggsave("facs/plots/3_m/Test_11/gene_set_proportions.png", plot, width = 45, height = 20)
     } else if (data_source == "droplet") {
       print("Saved to: droplet")
-      ggsave("droplet/plots/3_m/Test_11/gene_set_proportions.png", plot, width = 45, height = 45)
+      ggsave("droplet/plots/3_m/Test_11/gene_set_proportions.png", plot, width = 45, height = 20)
     } else {
       stop("Issue when saving.")
     }   
@@ -441,8 +509,7 @@ plot_gene_set_proportions <- function(df, data_source) {
 
 
 gene_set_proportions_compact <- function(df, data_source) {
-  df <- strat_df
-  data_source <- 'droplet'
+
   gene_set_order <- names(df)[grepl(" gene$", names(df))]
 
    all_cats <- c(
@@ -486,7 +553,7 @@ gene_set_proportions_compact <- function(df, data_source) {
       strip.background      = element_blank(),
       axis.text.y           = element_text(size = 25),
       axis.title.y           = element_text(size = 25, margin = margin(r = 15)),
-      axis.text.x           = element_text(angle = 45, hjust = 1, size = 17,  margin = margin(t = 16)),
+      axis.text.x           = element_text(angle = 90, hjust = 1, size = 17,  margin = margin(t = 16)),
       axis.title.x          = element_blank(),
       legend.position       = "right",
       legend.text           = element_text(size = 16) ,
@@ -495,10 +562,10 @@ gene_set_proportions_compact <- function(df, data_source) {
 
     if (data_source == "facs") {
       print("Saved to: FACS.")
-      ggsave("facs/plots/3_m/Test_11/gene_set_proportions_compact.png", plot, width = 22, height = 12)
+      ggsave("facs/plots/3_m/Test_11/gene_set_proportions_compact.png", plot, width = 32, height = 20)
     } else if (data_source == "droplet") {
       print("Saved to: droplet")
-      ggsave("droplet/plots/3_m/Test_11/gene_set_proportions_compact.png", plot, width = 22, height = 12)
+      ggsave("droplet/plots/3_m/Test_11/gene_set_proportions_compact.png", plot, width = 32, height = 20)
     } else {
       stop("Issue when saving.")
     }   

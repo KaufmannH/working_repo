@@ -32,16 +32,12 @@ source("scripts/src/load_gene_sets.R")
 source("scripts/src/stratification.R")
 source("scripts/src/gene_distribution.R")
 source("scripts/src/qc.R")
-source("scripts/src/technology_comparison.R")
+source("scripts/src/compare_technologies.R")
  
 #----------
 
 
 #_____
-
-
-
-
 
 
 
@@ -69,16 +65,15 @@ df_oocyte <- tag_oocyte_genes(df_meiosis)
 #df_all <- tag_not_expresssed_genes(df_oocyte, data_source = "droplet")
 
 
-# for doc: 
+# short version (for doc): 
 df_hk <- tag_hk_genes(data_source = "droplet")
 df_mac <- tag_mac_immune_response(df_hk)
 df_control <- tag_control_genes(df_mac)
 
 
-
 # cleaning, renmaing etc. 
 #report_genes_percluster <- genes_per_cluster(df_autoimmune)
-no_na <- set_NA_false(df_control) # or oocyte
+no_na <- set_NA_false(df_oocyte) # or oocyte
 prep <- set_gene_variability(no_na)
 renamed <- rename_cluster_id(prep)
 renamed_df <- rename_gene_sets(renamed)$df
@@ -89,6 +84,8 @@ tagged_df <- tag_no_gene_set_genes(renamed_df, gene_sets, "droplet")
 # stratification
 strat_df <- stratify_df(data_source = "droplet", cell_type_selection = "Macrophage") # also take df as arg
 strat_df <- readRDS("droplet/data/strat_df.rds")
+subsampled_strat_df <- readRDS("droplet/data/strat_subsampled_df.rds")
+
 
 # expression bins
 e <- plot_expression_bins(strat_df, "droplet")
@@ -98,10 +95,11 @@ n <- plot_expression_bin_numbers(strat_df, "droplet")
 # categories
 h <- plot_category_numbers(strat_df, "droplet")
 g <- plot_gene_set_numbers(strat_df, "droplet")
+f <- plot_all_clusters(strat_df, "droplet")
 
 d <- plot_gene_set_proportions(strat_df, "droplet")
 j <- gene_set_proportions_compact(strat_df, "droplet")
-
+source("scripts/src/stratification.R")
 # qc
 mac_marker_expression(df = strat_df, data_source = "droplet")
 
@@ -120,19 +118,11 @@ variability_df <- calc_variability_direction(master_entropy_df, "droplet")
 #scatter_entropy_hvg(variability_df, "droplet")
 heatmap_entropy_bins(master_entropy_df, "droplet")
 
-colnames(strat_df)
-unique(master_entropy_df$cluster_id)
 
-t <- master_entropy_df |>
-  filter(gene_variability == "HVG") |>
-  filter(res_var < 5)
-t
 
-# test how many hvg are there
-t <- master_entropy_df |>
-  group_by(gene_variability) |>
-  count()
-t
+
+
+
 
 
 
@@ -141,7 +131,7 @@ t
 #basic_df_facs <- assemble_TMS_df_facs(write = TRUE)
 
 # takes saved dfs and adds gene sets etc. 
-#df_main_filtered <- load_filter_og_df(data_source = "facs")
+df_main_filtered <- load_filter_og_df(data_source = "facs")
 
 
 # tag genes in which gene sets they are a part of
@@ -161,9 +151,16 @@ df_meiosis <- tag_meiosis_genes(df_sperm)
 df_oocyte <- tag_oocyte_genes(df_meiosis)
 #df_all <- tag_not_expresssed_genes(df_oocyte, data_source = "facs")
 
+
+# short version (for doc): 
+df_hk <- tag_hk_genes(data_source = "facs")
+df_mac <- tag_mac_immune_response(df_hk)
+df_control <- tag_control_genes(df_mac)
+
+
 # cleaning, renmaing etc. 
 #report_genes_percluster <- genes_per_cluster(df_autoimmune)
-no_na <- set_NA_false(dict_df)
+no_na <- set_NA_false(df_meiosis)
 prep <- set_gene_variability(no_na)
 renamed <- rename_cluster_id(prep)
 renamed_df <- rename_gene_sets(renamed)$df
@@ -175,7 +172,6 @@ strat_df <- stratify_df(data_source = "facs", cell_type_selection = "Macrophage"
 strat_df <- readRDS("facs/data/strat_df.rds")
 
 
-colnames(strat_df)
 # expression bins
 e <- plot_expression_bins(strat_df, "facs")
 #l <- plot_expression_bins_lps(strat_df, "facs")
@@ -184,10 +180,11 @@ n <- plot_expression_bin_numbers(strat_df, "facs")
 # categories
 h <- plot_category_numbers(strat_df, "facs")
 g <- plot_gene_set_numbers(strat_df, "facs")
+f <- plot_all_clusters(strat_df, "facs")
 
 d <- plot_gene_set_proportions(strat_df, "facs")
 j <- gene_set_proportions_compact(strat_df, "facs")
-
+source("scripts/src/stratification.R")
 # qc
 mac_marker_expression(df = strat_df, data_source = "facs")
 
