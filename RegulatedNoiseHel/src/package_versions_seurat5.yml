@@ -1,0 +1,24 @@
+name: regnoise_seurat5_env
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # R version (current stable release)
+  - r-base=4.4.*
+  
+  # Core packages
+  - r-seurat=5.1.0
+  - r-seuratobject=5.0.2
+  - r-uwot=0.2.2
+  - r-leiden=0.4.3
+  - r-rtsne=0.17
+  - r-patchwork=1.2.0
+  - r-ggrepel=0.9.6
+
+  # Data science and modelling
+  - r-tidyverse=2.0.0
+  - r-tidymodels=1.2.0
+
+  # Development tools
+  - r-remotes
+  - r-devtools
