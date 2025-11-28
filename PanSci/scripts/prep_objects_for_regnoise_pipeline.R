@@ -3,7 +3,7 @@
 
 #library('tidyverse')
 library('Seurat')
-library('dplyr')
+library('tidyverse')
 
 
 # comparison: what is different that i need? 
@@ -12,7 +12,7 @@ head(c@meta.data)
 colnames(c@meta.data)
 
 # example data
-t <- readRDS('data/subsets/Female.03_months.rds')
+t <- readRDS('PanSci/data/subsets/Female.03_months.rds')
 dim(t)
 head(t@meta.data)
 colnames(t@meta.data)
@@ -20,21 +20,20 @@ colnames(t@meta.data)
 
 
 # do all files
-
-path <- "data/subsets"
+path <- "PanSci/data/subsets"
 files <- list.files(path, pattern = "\\.rds$", full.names = TRUE)
-out_path <-  "data/prepped_for_pipeline"
+out_path <-  "PanSci/data/prepped_for_pipeline"
 
 for (f in files) {
+ # f <- files[3]
   message("Processing: ", f)
   so <- readRDS(f)
   
   # store original cell number for later
   so@misc$orig_n_cells <- ncol(so@meta.data)
 
-
   #bring into usable shape
-  so@meta.data <- so@meta.data %>%
+  so@meta.data <- so@meta.data |>
     rename(
       sex = Sex, 
       tissue = Organ_name,
@@ -47,23 +46,28 @@ for (f in files) {
   if (DefaultAssay(so) != "originalexp") {
    so <- RenameAssays(so, RNA = "originalexp")
   }
-  
-  # TODO:extract cluster names for after the pipeline
-  cell_type_df <- so@meta.data 
-  rownames(cell_type_df) <- NULL
 
-  cell_type_df <- cell_type_df |>
-    select(tissue, age_sex, ID, cell_ontology_class, Lineage) |>
-    unique() |>
-    arrange(ID)
-  cell_type_df
-  # add save cell type annotation
+  # filter for just WT mice
+    so_filtered <- subset(so, subset = Genotype == "WT")
 
+  # create new file name to make it compatiple with the pipeline and downstream processing
+  tissue <- so_filtered@meta.data |>
+    distinct(tissue) |>
+    pull(tissue) 
+  base <- tools::file_path_sans_ext(basename(f))
+  sex <- base |>
+    str_extract("^[^.]+") |>
+    tolower()                                   
+  age_num <- base |>
+    str_extract("(?<=\\.)[0-9]{2}(?=_months)")   
+  age_short <- paste0(as.integer(age_num), "m") 
+  file_name <- paste0(tissue, "_", age_short, "_", sex, "_prepped.rds")
 
-  # save seurat object
-  file_name <- paste0(sub("\\.rds$", "", basename(f)), "_prepped.rds")
-  saveRDS(so, paste0(out_path, "/" , file_name))
+    # save seurat object
+  saveRDS(so_filtered, paste0(out_path, "/" , file_name))
   message("Saved: ", file_name)
 
 }
+
+
 

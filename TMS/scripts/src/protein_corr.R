@@ -37,7 +37,7 @@ quantile_normalisation <- function(df){
   df_sorted <- map_df(df,sort)
   # Find row mean on sorted columns
   df_mean <- rowMeans(df_sorted)
-  
+   
   # Function for substiting mean values according to rank 
   index_to_mean <- function(my_index, my_mean){
     return(my_mean[my_index])

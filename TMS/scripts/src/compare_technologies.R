@@ -691,22 +691,89 @@ merge_plot_all_num_genes <- function(){
 combine_technologies_2 <- function(){
   # combine droplet and pansci tables of resvar and bootstrapping (hepatocytes)
 
+  df_facs_raw <- read_csv("TMS/facs/data/combined_data.csv")
+  df_droplet_raw <- read_csv("TMS/droplet/data/combined_data.csv") 
+  df_pansci_raw <- read_csv("PanSci/data/prepped_for_strat/combined_data.csv") 
 
-  df_facs_raw <- readRDS("facs/data/variability_dir_metadata.rds")
-  df_droplet_raw <- readRDS("droplet/data/variability_dir_metadata.rds")
-  df_pansci_raw <- readRDS("droplet/data/variability_dir_metadata.rds")
-
-
-  df_facs <- df_facs_raw |> mutate(technology = 'facs')
-  df_droplet <- df_droplet_raw |> mutate(technology = 'droplet') 
-  df_easysci <- df_droplet_raw |> mutate(technology = 'easysci') 
-
-
+   # select only hepatocytes (delete in future)
+  df_facs <- df_facs_raw |> mutate(technology = 'facs') |> filter(cell_type == 'hepatocyte')
+  df_droplet <- df_droplet_raw |> mutate(technology = 'droplet') |> filter(cell_type == 'hepatocyte')
+  df_easysci <- df_pansci_raw |> mutate(technology = 'easysci') # already selected hepatocytes in previous steps
 
   bound_df <- bind_rows(df_facs, df_droplet, df_easysci)
+  saveRDS(bound_df, 'TMS/comparison/data/hep_all_tech_df.rds')
+  write.table(bound_df, file = 'TMS/comparison/data/hep_all_tech_df.txt',sep = "\t", quote = FALSE,row.names = FALSE)
 
-  return(combined_df)
+  return(bound_df)
 }
+
+
+# how to filter the genes? the ones that are only detected in all? 
+
+bound_df <- readRDS('TMS/comparison/data/hep_all_tech_df.rds')
+bound_df[1:10, 6:12]
+t <- bound_df |> select(technology, cluster_id, age) |> distinct() 
+print(t, n = 100)
+
+
+# correlation of the resvars 
+df_a <- df_droplet
+df_b <- df_easysci
+head(df_b)
+
+# check if gene names overlap
+intersect(df_a$gene, df_b$gene)
+df_a$gene
+df_b$gene
+# TODOO pansci has ensm  gene names 
+
+
+  # get gene + cluster unique identifier
+  df_old_edit <- df_a |>
+      mutate(gene_cluster_age_sex = paste0(gene, "_", cluster_id)) |>
+      mutate(res_var_old = res_var) |>
+      select(gene_cluster_age_sex, res_var_old)
+head(df_old_edit)
+
+  df_new_edit <- df_b |>
+      mutate(gene_cluster_age_sex = paste0(gene, "_", cluster_id)) |>
+      mutate(res_var_new = res_var) |>
+      select(gene_cluster_age_sex, res_var_new)
+head(df_new_edit)
+
+
+
+
+
+  intersect_df <- df_old_edit |>
+      inner_join(df_new_edit, by = "gene_cluster_age_sex") |>
+      mutate(delta = res_var_new - res_var_old)
+  head(intersect_df)
+
+  extreme_cases_df <- intersect_df |>
+      filter(abs(res_var_old - res_var_new) > 5) |>
+      arrange(gene_cluster_age_sex)
+  dim(intersect_df)
+
+  plot <- ggplot(intersect_df, aes(x = res_var_old, y = res_var_new, color = delta )) +
+      geom_point(alpha = 0.3) +
+      geom_abline(slope = 1, intercept = 0, colour = "lightblue") +
+      labs(x = "Residual variance (10X)", y = "Residual variance (EasySci)") +
+      scale_colour_gradient2(
+      low = "black", mid = "grey70", high = "#1a9850",
+      midpoint = 0,
+      name = "Δ new–old" ) +
+      theme_classic(base_size = 20) +                    
+      theme(
+          axis.title  = element_text(size = 20),
+          axis.text   = element_text(size = 20),
+          legend.title= element_text(size = 20),
+          legend.text = element_text(size = 18))
+
+  ggsave("TMS/comparison/plots/liver/res_var_corr.png",  plot, width = 10, height = 10)
+
+
+
 
 
 

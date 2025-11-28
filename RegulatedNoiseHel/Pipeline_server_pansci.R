@@ -9,8 +9,8 @@ library(reticulate)
 use_python("/home/hkaufm49/anaconda3/envs/pansci_env/bin/python", required = TRUE)
 
 #source('src/config_file.R')
-source('src/FunctionLib_pansci.R')
-source('src/FunctionLibHel.R')
+source('RegulatedNoiseHel/src/FunctionLib_pansci.R')
+source('RegulatedNoiseHel/src/FunctionLibHel.R')
 
 
 # importend from config file
@@ -18,7 +18,7 @@ source('src/FunctionLibHel.R')
 SelectedTissues <- "Liver"
 
 impose_clusters <- FALSE
-testrun <- FALSE
+testrun <- TRUE
 n_cells <- 300 # only used if testrun == TRUE
 
 min_cells <- 100 # minimum number of cells per subgroup/condition (in case of TMS age/sex group)
@@ -44,7 +44,7 @@ ram_start <- mem_used()
 
 # SCTransform_v2 is an adaptation of the original Seurat wrapper, fixing the issue 
 # that vst.out is not saved in the misc slot of the Seurat output object
-source('src/SCTransform_v2.R')
+source('RegulatedNoiseHel/src/SCTransform_v2.R')
 # bind functions of this external version of SCT to Seurat
 e1 <- loadNamespace("Seurat")
 environment(SCTransform_v2) <- e1
@@ -52,7 +52,7 @@ environment(SCTransform_v2) <- e1
 
 
 # Setup Output folders
-out_folder <- "data/processed/pansci_liver"          
+out_folder <- "RegulatedNoiseHel/data/processed/pansci_liver"          
 if (!file.exists(out_folder)) dir.create(out_folder)
 
 
@@ -108,7 +108,7 @@ fraction_removed <- tibble(
 
   for (f in files) {
 
-    #f <-  "/home/hkaufm49/analyses/working_repo/PanSci/data/prepped_for_pipeline/Male.03_months_prepped.rds"  
+    f <-  "/home/hkaufm49/analyses/working_repo/PanSci/data/prepped_for_pipeline/Liver_23m_male_prepped.rds"  
 
     file_name <- paste0(sub("\\.rds$", "", basename(f)), "_prepped.rds")
     message("Processing: ", file_name)
@@ -125,7 +125,8 @@ fraction_removed <- tibble(
     # only analyze subsets with sufficient number of cells
     AgeSexGroups <- unique(so_full@meta.data$age_sex)
     keep <- vector(mode = "logical", length = length(AgeSexGroups))
-
+    
+    AgeSexGroups
 
 
     for (i in 1:length(AgeSexGroups)) {
@@ -136,18 +137,23 @@ fraction_removed <- tibble(
     dim(so_full)
 
     for (age_group in AgeSexGroups) {
-      #age_group <- '03_months_Male'
+      age_group <- '23_months_Male'
 
       so <- subset(so_full, subset = age_sex == age_group) # select relevant age group
-
       print(paste("processing", tissue, age_group, sep = " "))
+
 
       if (testrun) {
         so <- so[,1:n_cells]
       }
       
+      # if there are too many cells, the clustering crashes
+      if (ncol(so) > 35000) {
+        set.seed(888)  
+        keep_cells <- sample(colnames(so), 35000)
+        so <- subset(so, cells = keep_cells)
+      }
         
-
 
       so <- SCTransform_v2(so, assay = "originalexp", verbose = FALSE)
 
@@ -166,7 +172,7 @@ fraction_removed <- tibble(
       #so$leiden_sct <- so$seurat_clusters
       #so$seurat_clusters <- NULL
       dim(so)
-colnames(so@meta.data)
+
 
 
       # OPTIONAL: Impose original clusters (only for reproduction)
@@ -304,11 +310,11 @@ colnames(so@meta.data)
         mutate(tissue = tissue, age = age_group)
       
       # adapt according to data structure
-      # if (tissue == SelectedTissues[1]) {
-      #   results_tibble <- results_tmp_tibble
-      # } else {
-      #   results_tibble <- rbind(results_tibble, results_tmp_tibble)
-      # }
+       if (tissue == SelectedTissues[1]) {
+         results_tibble <- results_tmp_tibble
+       } else {
+         results_tibble <- rbind(results_tibble, results_tmp_tibble)
+       }
       
       if (age_group == AgeSexGroups[1]) {
         results_tibble <- results_tmp_tibble
@@ -327,9 +333,9 @@ colnames(so@meta.data)
     
 }
 
+saveRDS(results_tibble, file = paste0(out_folder, "/results_tibble", age_group, ".rds"))
+write_tsv(results_tibble, file = paste0(out_folder, "/results_tibble", age_group, ".tsv"))
 
-#saveRDS(results_tibble, file = file.path(out_folder, "results_tibble.rds"))
-#write_tsv(results_tibble, file = file.path(out_folder, "results_tibble.tsv"))
 
 
   end <- Sys.time()

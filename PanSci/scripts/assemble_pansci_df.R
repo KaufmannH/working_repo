@@ -1,100 +1,178 @@
 # this is analogous to assemble_TMS_df.R which brings FACS and droplet into the same shape for the stratification pipeline
 
+library('Seurat')
+library('tidyverse')
+library(org.Mm.eg.db)
 
-out_path <- '/home/hkaufm49/analyses/working_repo/PanSci/data/prepped_for_strat/'
-
-
-
-# in the TMS the results were saved in a tibble but not for pansci, so i added the code here
-
-quantile_perc <- c(.025, .975) # this was specified in the pipeline_server script
-tissue <- 'Liver'
-bs_path <- "/home/hkaufm49/analyses/RegulatedNoiseHel/data/processed/pansci_liver/bootstrapping_tables/"
-bs_files <- list.files(bs_path, pattern = "\\.rds$", full.names = TRUE)
+# call funcitons
+out_path <- 'PanSci/data/prepped_for_strat'
+bs_stats(tissue = 'Liver', bs_path = "RegulatedNoiseHel/data/processed/pansci_liver/bootstrapping_tables")
+transfer_cell_type_annotation( so_path = "RegulatedNoiseHel/data/processed/pansci_liver/seurat_objects")
+assemble_easysci_df(write = TRUE)
 
 
-for (f in bs_files) {
+ 
+#-------------------------
 
- # f <- bs_files[1]
+# in the TMS the results were saved in a tibble but in one case not for pansci, so i added the code here
+bs_stats <- function(tissue, bs_path){
+  quantile_perc <- c(.025, .975) # this was specified in the pipeline_server script
+  tissue <- 'Liver'
+  #bs_path <- "RegulatedNoiseHel/data/processed/pansci_liver/bootstrapping_tables/"
+  bs_files <- list.files(bs_path, pattern = "\\.rds$", full.names = TRUE)
 
-  message("Reading: ", f)
-  age_group <-  str_extract(f, "(?<=_)[0-9]{2}_months_[A-Za-z]+(?=\\.rds)")
-  bootstrap_res <- readRDS(f)
-  res_var_cl <- readRDS(paste0('/home/hkaufm49/analyses/RegulatedNoiseHel/data/processed/pansci_liver/res_var_tables/res_var_cl_Liver_', age_group, '.rds' ))
 
-  stats <- bootstrap_res %>% 
-    group_by(gene, cluster) %>% 
-    summarize(mean_resvar_bs = mean(ResVar),
-              perc.hvg = sum(boolean_hvg) / n(),
-              quant_low = quantile(ResVar, probs = quantile_perc[1]), 
-              quant_high = quantile(ResVar, probs = quantile_perc[2]))
-  
-  results_tmp_tibble <- left_join(res_var_cl, stats, by = c("gene" = "gene", "cluster" = "cluster")) %>%
-    mutate(tissue = tissue, age = age_group)
+  for (f in bs_files) {
 
-  if (f == bs_files[1]) {
-    results_tibble <- results_tmp_tibble
-  } else {
-    results_tibble <- rbind(results_tibble, results_tmp_tibble)
+   #f <- bs_files[6]
+    message("Reading: ", f)
+    age_group <- str_extract(f, "(?<=_)[0-9]+m_(female|male)(?=\\.rds)")
+    print(paste('age_sex_group = ', age_group))
+    bootstrap_res <- readRDS(f)
+    res_var_cl <- readRDS(paste0('RegulatedNoiseHel/data/processed/pansci_liver/res_var_tables/res_var_cl_Liver_', age_group, '.rds' ))
+
+    stats <- bootstrap_res %>% 
+      group_by(gene, cluster) %>% 
+      summarize(mean_resvar_bs = mean(ResVar),
+                perc.hvg = sum(boolean_hvg) / n(),
+                quant_low = quantile(ResVar, probs = quantile_perc[1]), 
+                quant_high = quantile(ResVar, probs = quantile_perc[2]))
+    
+    results_tmp_tibble <- left_join(res_var_cl, stats, by = c("gene" = "gene", "cluster" = "cluster")) %>%
+      mutate(tissue = tissue, age = age_group)
+
+    if (f == bs_files[1]) {
+      results_tibble <- results_tmp_tibble
+    } else {
+      results_tibble <- rbind(results_tibble, results_tmp_tibble)
+    }
+  saveRDS(results_tibble, file = paste0(out_path, "/tmp/results_tibble_", age_group, ".rds"))
+  results_tibble[1:10, 4:11]
+
   }
-
 }
 
-results_tibble[1:10, 4:11]
-#saveRDS(results_tibble, file = file.path(out_folder, "results_tibble.rds"))
-
-
-# filter for hepatocyte clusters
-
-
-# stopped here: 
-# get a df witht he age, sex and cluster and cell type, do it in prepr objects for regnosie pipeline
-# the cluster in the resvar table is the seurat cluster
-# i think i need to generate an id for the main cell types myself and then relate
 
 
 
+# if you want to conserve the cluster and cell type annotation this has to be added to the results table
+transfer_cell_type_annotation <- function(so_path) {
+
+# list the seurat objects from the pipeline
+  so_path <- "RegulatedNoiseHel/data/processed/pansci_liver/seurat_objects/"
+  so_files <- list.files(so_path, pattern = "\\.rds$", full.names = TRUE)
+
+
+  all_results <- vector("list", length(so_files))
+  for (i in seq_along(so_files)) {
+    f <- so_files[i]
+    #f <- so_files[1]
+
+    # get metadata from seurat object after regnoise pipeline
+    age_group <- str_extract(f, "[0-9]+m_(female|male)") # more general regex
+    so <- readRDS(f)
+    meta_df <- so@meta.data
+    rm(so)
+    gc()
+    meta_df <- as_tibble(meta_df)
+    meta_df <- tibble::remove_rownames(meta_df)
+
+
+    # get df with og cluster names and new seurat clusters
+    meta_df_selected <- meta_df |>
+      select(age_sex, Genotype, cell_ontology_class, Sub_cell_type, seurat_clusters ) |>
+      unique() |>
+      mutate(og_clusters = str_extract(Sub_cell_type, "(?<=-).*")) |>
+      mutate(cell_ontology_class = as.character(cell_ontology_class),
+             seurat_clusters = as.character(seurat_clusters)) 
+
+
+     # get results tibble from regnoise pipeline with res_var and bootstrapping
+    results_tibble <- readRDS(paste0(out_path, "/tmp/results_tibble_", age_group, ".rds"))
+
+    # match via seurat clusters
+    results_merged <- results_tibble |>
+      left_join(meta_df_selected, by = c(cluster = 'seurat_clusters', age = 'age_sex')) |>
+      filter(cell_ontology_class == 'Hepatocytes') |> # REMOVE (select only hepatocytes)
+      mutate(cell_ontology_class = 'hepatocyte') 
+   
+    dim(results_merged)
+    results_merged[1:10, 1:9] # check head
+    results_merged[2700:2708, 8:15] # check tail
+
+    # save
+    write_tsv(results_merged, paste0("PanSci/data/prepped_for_strat/results_merged_", age_group, ".tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+    all_results[[i]] <- results_merged
+  }
+  results_merged_all <- bind_rows(all_results)
+
+   write_tsv(results_merged_all, ("PanSci/data/prepped_for_strat/results_merged_all_ages.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+}
+
+
+t <- read_tsv("PanSci/data/prepped_for_strat/results_merged_all_ages.tsv")
+head(t)
+
+
+annotate_gene_names <- function(){
+
+  file <- read_tsv("PanSci/data/prepped_for_strat/results_merged_all_ages.tsv")
+
+  df_clean <- file |>
+  mutate(ensembl_clean = sub("\\.\\d+$", "", gene))
+
+  map_df <- AnnotationDbi::select(
+    org.Mm.eg.db,
+    keys    = unique(df_clean$ensembl_clean),
+    keytype = "ENSEMBL",
+    columns = "SYMBOL") |>
+    distinct(ENSEMBL, .keep_all = TRUE)
+map_df
+
+  df_annotated <- df_clean |>
+    left_join(map_df, by = c("ensembl_clean" = "ENSEMBL")) |>
+    mutate(gene = if_else(!is.na(SYMBOL) & SYMBOL != "", SYMBOL, gene) ) |>
+    dplyr::select(-ensembl_clean, -SYMBOL, -og_clusters, -Sub_cell_type) |>
+    distinct()
+
+   write_tsv(df_annotated, "PanSci/data/prepped_for_strat/results_merged_all_ages_annotated.tsv")
+
+  }
+
+
+
+
+#r <- read.delim("PanSci/data/prepped_for_strat/results_merged_all_ages.tsv")
+#tail(r)
+#gene_expression_data <- r
 
 assemble_easysci_df <- function(write = FALSE){
 
   # load data
   print("Loading data ...")
-  gene_expression_data <- read.delim("droplet/droplet_raw_data/full_results_10_22.tsv", header = TRUE, sep = "\t")
-  annotation_info_raw <- read_excel("droplet/droplet_raw_data/manual_annotation.xlsx")
-  metadata_cell_numbers_raw <- read.table('droplet/droplet_raw_data/combined_metadata_for_cell_numbers.txt', header = TRUE, sep = "\t") # there are cluster_ids that are not in the annotaiton info
+  gene_expression_data <- read_tsv(("PanSci/data/prepped_for_strat/results_merged_all_ages_annotated.tsv"))
+  #gene_expression_data <- read.delim("droplet/droplet_raw_data/full_results_10_22.tsv", header = TRUE, sep = "\t")
+  #annotation_info_raw <- read_excel("droplet/droplet_raw_data/manual_annotation.xlsx")
+  #metadata_cell_numbers_raw <- read.table('droplet/droplet_raw_data/combined_metadata_for_cell_numbers.txt', header = TRUE, sep = "\t") # there are cluster_ids that are not in the annotaiton info
   print("Data loaded.")
 
+  # prep df
+  gene_expression_data_renamed <- gene_expression_data |>
+    mutate(
+    # no spaces any more
+    cluster_id = paste(tissue, age, cluster, sep = "_"),
+    organ   = stringr::str_extract(cluster_id, "^[A-Za-z]+"),
+    months  = stringr::str_extract(cluster_id, "(?<=_)[0-9]+(?=m_)"),
+    sex     = stringr::str_extract(cluster_id, "(?<=[0-9]m_)[A-Za-z]+"),
+    sex     = stringr::str_to_lower(sex),
+    cluster = stringr::str_extract(cluster_id, "(?<=_)[0-9]+$"),
+    months  = paste0(as.integer(months), "m"),
+    cluster_id = paste(organ, months, sex, cluster, sep = "_"))
+head(gene_expression_data_renamed)
 
-  # prep dfs
-  gene_expression_data <- gene_expression_data |>
-    mutate(cluster_id = paste0(tissue , "_", age, "_", cluster)) 
-  head(gene_expression_data)
-  # every biological replicate and tissue have the same number of rows (genes)
-
-  # prep dfs
-  annotation_info <- annotation_info_raw  # cluster id exists already
-
-  gene_expression_data <- gene_expression_data |>
-    mutate(cluster_id = paste0(tissue , "_", age, "_", cluster))
-
-  metadata_cell_numbers <- metadata_cell_numbers_raw |> # this df contains one row per cell
-    mutate(cluster_id = paste0(tissue , "_", age_sex, "_", seurat_clusters)) |>
-    group_by(cluster_id) |>
-    summarise(num_cells_in_cluster = n(), .groups = 'drop') 
-
-
-# join dfs
-  numbers_joined <- gene_expression_data  |>
-    left_join(metadata_cell_numbers, by = "cluster_id") |>
-    select(-tissue) 
-  colnames(numbers_joined)
-
-  all_joined <- numbers_joined  |>
-    left_join(annotation_info, by = c("cluster_id")) 
-  colnames(all_joined)
 
   # tag LVGs
-  df_incl_lvgs <- all_joined |>
+  df_incl_lvgs <- gene_expression_data_renamed |>
     mutate(lvg = if_else(res_var < 1, TRUE, FALSE)) |>
     mutate(hvg = if_else(res_var >= 5 & gmean != 0, TRUE, FALSE))
   colnames(df_incl_lvgs)
@@ -103,20 +181,21 @@ assemble_easysci_df <- function(write = FALSE){
   df_finished <- df_incl_lvgs |>
     mutate(age = as.integer(str_extract(age, "\\d+(?=m)"))) |>
     rename(perc_hvg = perc.hvg,
-           cell_type = manual_final) |>
-           mutate(cell_type = str_remove(cell_type, "^(lymphocyte_|leukocyte_)")) |>
+           cell_type = cell_ontology_class) |>
+           mutate(cell_type = str_to_lower(cell_type)) |>
     select(gene, gmean, cluster_id, cell_type, tissue, age, res_var, perc_hvg, hvg, lvg)
   print("Df is done.")
- 
+  write <- TRUE
+
   if (write) {
       # write combined df to a csv
-    write.csv(df_finished, 'droplet/data/combined_data.csv')
+    write.csv(df_finished, paste0(out_path, '/combined_data.csv'))
     print("Saved df to data.")
 
     # get cell type names, write to excel for manual selection of innate immune cells
-    cell_type_list <- data.frame(unique(df_finished$cell_type))
-    write_xlsx(cell_type_list, 'droplet/data/cell_type_list.xlsx')
-    print("Saved cell type list to data.")
+   # cell_type_list <- data.frame(unique(df_finished$cell_type))
+   # write_xlsx(cell_type_list, pate0(out_path, '/cell_type_list.xlsx'))
+    #print("Saved cell type list to data.")
   }
 
 return(df_finished)
