@@ -717,7 +717,7 @@ combine_technologies_2 <- function(){
 
 ## explore gene overlap:
 
-bound_df <- readRDS('TMS/comparison/data/hep_all_tech_df.rds')
+bound_df <- readRDS('ImmuneNoise/comparison/data/hep_all_tech_df.rds')
 head(bound_df)
 
 
@@ -1101,5 +1101,54 @@ p_de <- ggplot(lvg_wide, aes(x = droplet, y = easysci)) +
 combined_plot <- p_fd | p_fe | p_de
 
 ggsave(filename = "TMS/comparison/plots/liver/lvg_non_0_correlation.png", plot = combined_plot, width = 12, height = 4, dpi = 300)
+
+
+
+
+
+
+# histograms of the resvar distribution
+
+
+plot <- ggplot(bound_df, aes(x = res_var, fill = technology)) +
+  geom_histogram(
+     binwidth = 0.05,
+    alpha = 0.5,         
+    position = "identity") +
+  theme_classic(base_size = 14) +
+   scale_x_log10() +
+  labs(
+    x = "Residual variance (log10)",
+    y = "Number of genes",
+    fill = "Technology")
+
+ggsave('ImmuneNoise/comparison/plots/liver/resvar_dist.png', plot, width = 20, height = 5)
+
+
+
+
+
+
+
+# density plots for resvar distribution
+
+tech_cols_fill <- c( facs = "#74C4E7", droplet  = "#F7D639", easysci  = "#E77E01")
+
+plot <- ggplot(bound_df, aes(x = res_var, fill = technology, color = technology)) +
+  geom_density(
+    alpha = 0.5,
+    linewidth = 0.5) +
+  scale_x_log10() +
+   scale_fill_manual(values = tech_cols_fill) +
+     scale_colour_manual(values = tech_cols_fill) +
+  theme_classic(base_size = 20) +
+  guides(colour = "none") +  
+  labs(
+    x = "Residual variance (log10)",
+    y = "Density",
+    fill = "Technology" )
+
+  ggsave('ImmuneNoise/comparison/plots/liver/resvar_dist_density.png', plot, width = 10, height = 5)
+
 
 
